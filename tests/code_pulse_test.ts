@@ -27,26 +27,34 @@ Clarinet.test({
             ], user1.address)
         ]);
         
-        block.receipts[0].result.expectOk().expectUint(0); // First course ID should be 0
-        block.receipts[1].result.expectErr(types.uint(100)); // err-owner-only
+        block.receipts[0].result.expectOk().expectUint(0);
+        block.receipts[1].result.expectErr(types.uint(100));
     }
 });
 
 Clarinet.test({
-    name: "Test course enrollment",
+    name: "Test lesson creation and completion",
     async fn(chain: Chain, accounts: Map<string, Account>) {
         const deployer = accounts.get('deployer')!;
         const student = accounts.get('wallet_1')!;
         
-        // First create a course
-        let block = chain.mineBlock([
+        // Create course and lesson
+        let setupBlock = chain.mineBlock([
             Tx.contractCall('code-pulse', 'create-course', [
                 types.ascii("Python Basics"),
                 types.uint(100)
+            ], deployer.address),
+            Tx.contractCall('code-pulse', 'add-lesson', [
+                types.uint(0),
+                types.ascii("Variables"),
+                types.uint(10)
             ], deployer.address)
         ]);
         
-        // Then test enrollment
+        setupBlock.receipts[0].result.expectOk().expectUint(0);
+        setupBlock.receipts[1].result.expectOk().expectUint(0);
+        
+        // Enroll student
         let enrollBlock = chain.mineBlock([
             Tx.contractCall('code-pulse', 'enroll-in-course', [
                 types.uint(0)
@@ -55,55 +63,57 @@ Clarinet.test({
         
         enrollBlock.receipts[0].result.expectOk().expectBool(true);
         
-        // Verify enrollment
-        let verifyBlock = chain.mineBlock([
-            Tx.contractCall('code-pulse', 'get-student-progress', [
-                types.principal(student.address),
+        // Complete lesson
+        let completeBlock = chain.mineBlock([
+            Tx.contractCall('code-pulse', 'complete-lesson', [
+                types.uint(0),
                 types.uint(0)
-            ], deployer.address)
+            ], student.address)
         ]);
         
-        const enrollment = verifyBlock.receipts[0].result.expectOk().expectSome();
-        assertEquals(enrollment['enrolled'], true);
-        assertEquals(enrollment['progress'], types.uint(0));
+        completeBlock.receipts[0].result.expectOk().expectBool(true);
     }
 });
 
 Clarinet.test({
-    name: "Test progress tracking and certificate issuance",
+    name: "Test lesson rating system",
     async fn(chain: Chain, accounts: Map<string, Account>) {
         const deployer = accounts.get('deployer')!;
         const student = accounts.get('wallet_1')!;
         
-        // Setup: Create course and enroll student
+        // Setup course and lesson
         let setupBlock = chain.mineBlock([
             Tx.contractCall('code-pulse', 'create-course', [
                 types.ascii("Python Basics"),
                 types.uint(100)
             ], deployer.address),
-            Tx.contractCall('code-pulse', 'enroll-in-course', [
-                types.uint(0)
-            ], student.address)
-        ]);
-        
-        // Update progress
-        let progressBlock = chain.mineBlock([
-            Tx.contractCall('code-pulse', 'update-progress', [
+            Tx.contractCall('code-pulse', 'add-lesson', [
                 types.uint(0),
-                types.uint(100)
-            ], student.address)
-        ]);
-        
-        progressBlock.receipts[0].result.expectOk().expectBool(true);
-        
-        // Issue certificate
-        let certBlock = chain.mineBlock([
-            Tx.contractCall('code-pulse', 'issue-certificate', [
-                types.uint(0),
-                types.principal(student.address)
+                types.ascii("Variables"),
+                types.uint(10)
             ], deployer.address)
         ]);
         
-        certBlock.receipts[0].result.expectOk().expectUint(0); // First certificate ID
+        // Rate lesson
+        let rateBlock = chain.mineBlock([
+            Tx.contractCall('code-pulse', 'rate-lesson', [
+                types.uint(0),
+                types.uint(5),
+                types.ascii("Great lesson!")
+            ], student.address)
+        ]);
+        
+        rateBlock.receipts[0].result.expectOk().expectBool(true);
+        
+        // Verify rating
+        let verifyBlock = chain.mineBlock([
+            Tx.contractCall('code-pulse', 'get-lesson-rating', [
+                types.principal(student.address),
+                types.uint(0)
+            ], deployer.address)
+        ]);
+        
+        const rating = verifyBlock.receipts[0].result.expectOk().expectSome();
+        assertEquals(rating['rating'], types.uint(5));
     }
 });
