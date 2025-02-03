@@ -4,7 +4,8 @@ A decentralized educational platform for learning programming languages through 
 
 ## Features
 - Create and manage programming courses
-- Track student progress
+- Track student progress with timestamps
+- Automatic course completion detection
 - Issue completion certificates
 - Reward system for completing lessons
 - Course marketplace
@@ -20,6 +21,12 @@ The smart contract handles:
 - Token rewards for completion
 - Lesson-specific reward distribution
 - Rating and feedback system
+
+## Progress Tracking
+- Tracks last activity timestamp for each enrollment
+- Automatically marks course as completed when all lessons finished
+- Validates progress against total lesson count
+- Maximum of 20 completed lessons tracked per course
 
 ## Reward System
 - Students earn PULSE tokens for completing individual lessons
