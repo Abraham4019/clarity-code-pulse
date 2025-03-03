@@ -1,34 +1,39 @@
 Clarinet.test({
-    name: "Test safety features and enhanced progress tracking",
+    name: "Test lesson completion security features",
     async fn(chain: Chain, accounts: Map<string, Account>) {
         const deployer = accounts.get('deployer')!;
         const student = accounts.get('wallet_1')!;
         
-        // Test contract pause
-        let pauseBlock = chain.mineBlock([
-            Tx.contractCall('code-pulse', 'set-contract-pause', [
-                types.bool(true)
-            ], deployer.address)
-        ]);
-        pauseBlock.receipts[0].result.expectOk();
-        
-        // Test cooldown period
+        // Test lesson completion with non-existent lesson
         let completionBlock = chain.mineBlock([
+            Tx.contractCall('code-pulse', 'complete-lesson', [
+                types.uint(0),
+                types.uint(999)
+            ], student.address)
+        ]);
+        completionBlock.receipts[0].result.expectErr(101); // err-not-found
+        
+        // Test duplicate lesson completion
+        let duplicateBlock = chain.mineBlock([
+            Tx.contractCall('code-pulse', 'complete-lesson', [
+                types.uint(0),
+                types.uint(0)
+            ], student.address),
             Tx.contractCall('code-pulse', 'complete-lesson', [
                 types.uint(0),
                 types.uint(0)
             ], student.address)
         ]);
-        completionBlock.receipts[0].result.expectErr(108); // err-contract-paused
+        duplicateBlock.receipts[1].result.expectErr(109); // err-lesson-already-completed
         
-        // Test completion tracking
-        let lessonsBlock = chain.mineBlock([
-            Tx.contractCall('code-pulse', 'get-student-completed-lessons', [
-                types.principal(student.address),
-                types.uint(0)
-            ], deployer.address)
+        // Test progress overflow protection
+        let overflowBlock = chain.mineBlock([
+            Tx.contractCall('code-pulse', 'complete-lesson', [
+                types.uint(0),
+                types.uint(21)
+            ], student.address)
         ]);
-        lessonsBlock.receipts[0].result.expectOk();
+        overflowBlock.receipts[0].result.expectErr(105); // err-invalid-progress
     }
 });
 
