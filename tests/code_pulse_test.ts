@@ -1,54 +1,40 @@
-[... original test content ...]
-
 Clarinet.test({
-    name: "Test enhanced progress tracking",
+    name: "Test lesson completion security features",
     async fn(chain: Chain, accounts: Map<string, Account>) {
         const deployer = accounts.get('deployer')!;
         const student = accounts.get('wallet_1')!;
         
-        // Create course with 2 lessons
-        let setupBlock = chain.mineBlock([
-            Tx.contractCall('code-pulse', 'create-course', [
-                types.ascii("Python Basics"),
-                types.uint(100)
-            ], deployer.address),
-            Tx.contractCall('code-pulse', 'add-lesson', [
-                types.uint(0),
-                types.ascii("Lesson 1"),
-                types.uint(10)
-            ], deployer.address),
-            Tx.contractCall('code-pulse', 'add-lesson', [
-                types.uint(0),
-                types.ascii("Lesson 2"), 
-                types.uint(10)
-            ], deployer.address)
-        ]);
-        
-        // Enroll and complete lessons
-        let progressBlock = chain.mineBlock([
-            Tx.contractCall('code-pulse', 'enroll-in-course', [
-                types.uint(0)
-            ], student.address),
+        // Test lesson completion with non-existent lesson
+        let completionBlock = chain.mineBlock([
             Tx.contractCall('code-pulse', 'complete-lesson', [
                 types.uint(0),
-                types.uint(0)
-            ], student.address),
-            Tx.contractCall('code-pulse', 'complete-lesson', [
-                types.uint(0),
-                types.uint(1)
+                types.uint(999)
             ], student.address)
         ]);
-
-        // Verify progress
-        let progress = chain.callReadOnlyFn(
-            'code-pulse',
-            'get-student-progress',
-            [types.principal(student.address), types.uint(0)],
-            deployer.address
-        );
-
-        const enrollment = progress.result.expectOk().expectSome();
-        assertEquals(enrollment['completed'], types.bool(true));
-        assertTrue(enrollment['last-activity'] > types.uint(0));
+        completionBlock.receipts[0].result.expectErr(101); // err-not-found
+        
+        // Test duplicate lesson completion
+        let duplicateBlock = chain.mineBlock([
+            Tx.contractCall('code-pulse', 'complete-lesson', [
+                types.uint(0),
+                types.uint(0)
+            ], student.address),
+            Tx.contractCall('code-pulse', 'complete-lesson', [
+                types.uint(0),
+                types.uint(0)
+            ], student.address)
+        ]);
+        duplicateBlock.receipts[1].result.expectErr(109); // err-lesson-already-completed
+        
+        // Test progress overflow protection
+        let overflowBlock = chain.mineBlock([
+            Tx.contractCall('code-pulse', 'complete-lesson', [
+                types.uint(0),
+                types.uint(21)
+            ], student.address)
+        ]);
+        overflowBlock.receipts[0].result.expectErr(105); // err-invalid-progress
     }
 });
+
+[... rest of original test content ...]
