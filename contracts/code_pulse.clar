@@ -11,6 +11,7 @@
 (define-constant err-cooldown-active (err u106))
 (define-constant err-invalid-input (err u107))
 (define-constant err-contract-paused (err u108))
+(define-constant err-lesson-already-completed (err u109))
 
 ;; Data Variables
 (define-data-var next-course-id uint u0)
@@ -34,6 +35,14 @@
     created-at: uint
 })
 
+(define-map lessons uint {
+    title: (string-ascii 50),
+    course-id: uint,
+    reward-amount: uint,
+    content-hash: (buff 32),
+    active: bool
+})
+
 (define-map enrollments (tuple (student principal) (course-id uint)) {
     enrolled: bool,
     progress: uint,
@@ -43,18 +52,20 @@
     last-lesson-completion: uint
 })
 
-;; Administrative Functions
-(define-public (set-contract-pause (paused bool))
-    (begin
-        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
-        (ok (var-set contract-paused paused))
-    )
-)
+;; Events
+(define-data-var event-counter uint u0)
 
-(define-public (set-lesson-cooldown (new-cooldown uint))
+(define-public (emit-lesson-completed (student principal) (course-id uint) (lesson-id uint))
     (begin
-        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
-        (ok (var-set lesson-cooldown new-cooldown))
+        (var-set event-counter (+ (var-get event-counter) u1))
+        (print {
+            event: "lesson-completed",
+            student: student,
+            course-id: course-id,
+            lesson-id: lesson-id,
+            timestamp: block-height
+        })
+        (ok true)
     )
 )
 
@@ -66,33 +77,30 @@
         (course (unwrap! (map-get? courses course-id) err-not-found))
         (current-time block-height)
         (last-completion (get last-lesson-completion enrollment))
+        (completed-lessons (get lessons-completed enrollment))
     )
     (asserts! (not (var-get contract-paused)) err-contract-paused)
     (asserts! (get enrolled enrollment) err-not-enrolled)
+    (asserts! (is-eq (get course-id lesson) course-id) err-invalid-input)
+    (asserts! (get active lesson) err-not-found)
     (asserts! (>= (- current-time last-completion) (var-get lesson-cooldown)) err-cooldown-active)
+    (asserts! (not (contains? completed-lessons lesson-id)) err-lesson-already-completed)
     
-    (if (> (get progress enrollment) (get lesson-count course))
+    (if (>= (+ (get progress enrollment) u1) (get lesson-count course))
         (err err-invalid-progress)
         (begin
             (try! (ft-mint? pulse-token (get reward-amount lesson) tx-sender))
             (map-set enrollments {student: tx-sender, course-id: course-id}
                 (merge enrollment {
-                    lessons-completed: (unwrap! (as-max-len? (append (get lessons-completed enrollment) lesson-id) u20) err-not-found),
+                    lessons-completed: (unwrap! (as-max-len? (append completed-lessons lesson-id) u20) err-not-found),
                     progress: (+ (get progress enrollment) u1),
                     last-activity: current-time,
                     last-lesson-completion: current-time,
                     completed: (>= (+ (get progress enrollment) u1) (get lesson-count course))
                 }))
+            (try! (emit-lesson-completed tx-sender course-id lesson-id))
             (ok true)
         ))
-    )
-)
-
-;; Getter Functions
-(define-read-only (get-student-completed-lessons (student principal) (course-id uint))
-    (match (map-get? enrollments {student: student, course-id: course-id})
-        enrollment (ok (get lessons-completed enrollment))
-        (err err-not-found)
     )
 )
 
